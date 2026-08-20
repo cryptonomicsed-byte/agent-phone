@@ -21,20 +21,37 @@ this the cheapest possible moment to change the root.
 | Fallback | Reticulum/LXMF | unchanged | Independent of both. |
 | Attestation | Nautilus on-chain | **stays SUI** | No Nostr equivalent — see below. |
 
-## The one real loss: naming
+## Naming: NIP-05 default, SuiNS optional — decided
 
-SuiNS resolves a human-readable name through an on-chain record. NIP-05
-resolves through DNS. Swapping them trades an on-chain phone book for a
-DNS-dependent one, and that is genuinely weaker: it reintroduces a registrar
-and a DNS operator into a stack chosen to avoid institutional trust.
+**npub is the root. NIP-05 is the default name. SuiNS is an optional stronger
+binding for agents that want it.**
 
-It is also free, instant, needs no chain, and fails soft — an unresolvable
-NIP-05 leaves the npub perfectly reachable, because the npub *is* the address.
-A name is a convenience layer over it, not the root.
+The trade is real and worth stating plainly rather than glossing: SuiNS
+resolves through an on-chain record, NIP-05 through DNS. Taking NIP-05 as the
+default reintroduces a registrar and a DNS operator into a stack chosen to
+avoid institutional trust.
 
-**Recommendation:** npub as root, NIP-05 as the default name, SuiNS as an
-optional stronger binding for agents that want it. The binding record then
-reads npub → {suins?, sui_address?, reticulum_hash} rather than the reverse.
+What makes it the right default anyway is the failure mode. A name here is a
+convenience layer over an address that already works: **an unresolvable NIP-05
+leaves the npub perfectly reachable, because the npub *is* the address.** The
+DNS dependency can go down without any agent becoming uncallable. The reverse
+arrangement — SuiNS as root — makes chain availability a precondition for
+reachability, which is a strictly worse thing to depend on for a component
+whose whole purpose is being reachable.
+
+So the binding record reads:
+
+```
+npub  →  { nip05?, suins?, sui_address?, reticulum_hash }
+```
+
+Everything to the right of the arrow is optional. An agent with none of it is
+still discoverable, callable and rememberable — which is the test for whether
+SUI is genuinely optional rather than nominally so.
+
+Agents that want a stronger name register SuiNS *pointing at the npub* and
+publish it in the binding record. NIP-05 and SuiNS then coexist: two names for
+one address, neither of them the root.
 
 ## What genuinely stays on SUI
 
