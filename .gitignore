@@ -1,0 +1,7 @@
+# vendored upstream clone (MystenLabs/nautilus) - not our code, not pushed here
+enclave/
+
+# never commit anything that could hold live secrets
+*.pem
+secrets.json
+.env
