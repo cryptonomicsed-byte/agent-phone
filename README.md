@@ -4,14 +4,20 @@ Sovereign, verifiable AI-agent communications stack. An agent's "phone number"
 is a `.sui` identity backed by a TEE-attested brain, encrypted persistent
 memory, and censorship-resistant discovery/signaling.
 
-## Architecture (locked)
+## Architecture
+
+> **Repositioned 2026-08-20:** Nostr is now the identity root, not the
+> signaling channel. SuiNS/Seal/Walrus become optional. See
+> [NOSTR_INTEGRATION.md](NOSTR_INTEGRATION.md) for what inverts, what is
+> traded (human-readable naming), and what genuinely stays on SUI
+> (Nautilus attestation).
 
 | Layer | Tech | Role |
 |---|---|---|
 | Compute | Nautilus (AWS Nitro Enclave) | Verifiable private compute — the agent's "brain". Every response is signed by an enclave-held ephemeral key whose attestation is checked on-chain. |
-| Memory | Seal + Walrus | Sui-native encryption (access policy) + decentralized blob storage for private, persistent agent memory (conversation history, voicemail, transcripts). |
-| Identity | SuiNS (`.sui`) | Identity root. Binding record links Sui address ↔ Nostr npub ↔ Reticulum destination hash. |
-| Presence / signaling | Nostr (NIP-01/05/17/44/65, NIP-AC) | Heartbeat presence + gift-wrapped call setup (offer/answer/ICE/hangup). NIP-05 identifier is SuiNS-backed instead of DNS-backed. |
+| Memory | **NIP-44 + Blossom** (Seal/Walrus optional) | Encrypted engrams plus relay-served blob storage (`kind:24242`, live in Vantage). Seal/Walrus remain an optional durability tier for objects that must outlive relay retention. |
+| Identity | **Nostr npub (NIP-06)** | Identity root. Naming is NIP-05 by default, SuiNS optional. Binding record reads npub → { nip05?, suins?, sui_address?, reticulum_hash } — everything right of the arrow optional. |
+| Presence / signaling | Nostr (NIP-01/05/17/44/46/65, NIP-AC) | Heartbeat presence + gift-wrapped call setup (offer/answer/ICE/hangup). NIP-46 keeps the agent key out of the phone process. NIP-05 may optionally be SuiNS-backed rather than DNS-backed. |
 | Media | WebRTC | Actual voice/video, P2P (SFU for group calls). |
 | Fallback transport | Reticulum + LXMF | Off-grid / resilient path — Ed25519 signing, X25519 ephemeral ECDH, LoRa/packet-radio/TCP-IP/I2P agnostic, store-and-forward via Propagation Nodes. |
 | Legacy bridge (deferred) | AgentPhone/Somleng-style PSTN bridge | Optional, not started. Lets a plain phone call reach an agent. |
