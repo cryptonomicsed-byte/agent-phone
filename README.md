@@ -96,6 +96,35 @@ Then follow `enclave/UsingNautilus.md` from the SSH step onward.
   integration point (agent-phone `.sui` identity as an auth method). No
   forced connection — waiting on their read of the fit.
 
+## Phase 10 interim option — agentphone.ai assessment (2026-08-22)
+
+Phase 10 (PSTN bridge, deferred) has a working hosted stand-in available
+NOW as an interim carrier while the sovereign stack matures:
+
+- **agentphone.ai** is a closed-source SaaS whose product IS the deferred
+  capability: agents get real phone numbers, SMS, and voice calls with
+  per-agent system prompts/voices and webhook delivery.
+- **API**: 92-op OpenAPI spec is public (`/openapi.json` at agentphone.ai;
+  base `https://api.agentphone.ai`). Auth is `Authorization: Bearer
+  <key>`; keys use Stripe-style `sk_live_` naming. Account usage snapshot
+  from assessment: 1 number / 10, 1 call, agent "Bino Elgua's Agent".
+- **Open-source split**: the platform is proprietary, but client adapters
+  are MIT — `AgentPhone-AI/agentphone-mcp` (MCP server, hosted at
+  `mcp.agentphone.ai/mcp`), `crewai-agentphone`, `openai-agents-agentphone`,
+  `chat-sdk-adapter`. Pull the MCP server into SIM for the full
+  numbers/SMS/calls tool surface.
+- **Webhooks**: `https://agentphone.ai/webhooks` is the delivery-config
+  surface; call/SMS events can trigger SIM workflows or any endpoint we
+  point it at.
+- **Key hygiene**: a live account key was assessed during this note's
+  research and is considered EXPOSED (passed through chat) — rotate in
+  Settings → API keys before any real use; never commit key values (house
+  secret-scan applies; the repo's own hard boundary on keys extends to
+  this integration).
+- **Plan**: use agentphone.ai as the interim PSTN carrier behind the
+  sovereign identity layer, and keep their OpenAPI spec as the contract
+  reference for building phase 10 self-hosted (Somleng-style) later.
+
 ## Hard boundaries
 
 - Never accept raw AWS access keys/secret keys via chat. Always use the
