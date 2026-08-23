@@ -109,7 +109,7 @@ by definition.
 
 ## Status
 
-- [ ] Namespace registered
+- [x] Namespace registered (`mem/phone/*` already listed in `minipae/NAMESPACES.md`, status: planned)
 - [ ] Identity flow implemented (npub root)
 - [ ] Binding record engram
 - [ ] Heartbeat presence
