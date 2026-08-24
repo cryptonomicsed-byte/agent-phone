@@ -22,17 +22,40 @@ memory, and censorship-resistant discovery/signaling.
 | Fallback transport | Reticulum + LXMF | Off-grid / resilient path — Ed25519 signing, X25519 ephemeral ECDH, LoRa/packet-radio/TCP-IP/I2P agnostic, store-and-forward via Propagation Nodes. |
 | Legacy bridge (deferred) | AgentPhone/Somleng-style PSTN bridge | Optional, not started. Lets a plain phone call reach an agent. |
 
+## Implementation status (2026-08-24)
+
+The Nostr-native telecom stack is now **real code** — a Python package
+(`agent_phone/`) built on top of minipae (BIP-340 + NIP-44 v2 + NIP-AE).
+Nautilus stays the only Sui dependency and remains deferred; the brain runs
+as an ordinary process and the wire format is identical either way.
+
+**Implemented (8/8 unit tests green):**
+
+- `identity.py` — npub root (NIP-06), kind:0 metadata, binding engram
+  (`mem/phone/identity` → `npub → {nip05?, suins?, sui_address?, reticulum_hash}`)
+- `signaling.py` — NIP-17 gift-wrapped call signaling (offer/answer/ICE/hangup)
+  + a `CallSession` state machine
+- `presence.py` — NIP-65 relay list + heartbeat presence (kind:10002)
+- `voicemail.py` — voicemail engram + Blossom blob reference
+- `nip46.py` — `PhoneSigner`: transport-key remote signing so the network-exposed
+  phone process never holds the agent nsec
+- `cli.py` — `identity`, `binding`, `heartbeat`, `offer`, `decrypt`, `voicemail`
+
+**Still open:** Phase 1 (Nautilus — blocked on AWS Free Tier verification),
+Phase 7 (Reticulum/LXMF fallback), Phase 9 (payments — flag-gated), Phase 10
+(PSTN — deferred).
+
 ## Build order (10 phases)
 
 1. **Nautilus enclave on real Nitro hardware, prove attestation** — 🔴 BLOCKED (see below)
-2. Seal + Walrus standalone proof (encrypt/store/retrieve without the enclave)
-3. Wire enclave to Seal/Walrus (agent brain reads/writes its own encrypted memory)
-4. SuiNS identity binding (Sui address ↔ npub ↔ Reticulum hash, on-chain record)
-5. Nostr heartbeat presence
-6. NIP-AC signaling + first live WebRTC call between two agents
-7. Reticulum/LXMF fallback transport
-8. Voicemail store-and-forward (Seal-encrypted, Walrus-stored) — ⚠️ money/payment adjacent work in this phase stays **flag-gated, not live**, per hard boundary
-9. Payments / spam resistance — ⚠️ same hard boundary: no live fund-moving execution without explicit owner authorization
+2. ✅ NIP-44 + Blossom memory (identity + binding + voicemail engrams) — *done*
+3. Wire enclave to NIP-44/Blossom memory (deferred with Phase 1)
+4. ✅ npub identity binding (NIP-05 default, SuiNS optional) — *done*
+5. ✅ Nostr heartbeat presence (kind:10002) — *done*
+6. ✅ NIP-17 gift-wrapped signaling (offer/answer/ICE/hangup) — *done* (WebRTC media is out-of-band)
+7. Reticulum/LXMF fallback transport — open
+8. ✅ Voicemail store-and-forward (NIP-44 + Blossom) — *done*
+9. Payments / spam resistance — ⚠️ flag-gated, not live
 10. Optional PSTN bridge (deferred, not started)
 
 ## Current status (2026-08-19)

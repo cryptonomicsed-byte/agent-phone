@@ -5,3 +5,6 @@ enclave/
 *.pem
 secrets.json
 .env
+__pycache__/
+*.pyc
+.pytest_cache/

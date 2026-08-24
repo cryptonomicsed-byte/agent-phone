@@ -1,0 +1,8 @@
+# Runtime dependency: minipae (BIP-340 + NIP-44 v2 + NIP-AE kind:30174).
+# It lives in the sibling `cryptonomicsed-byte/minipae` repo. If it is not
+# pip-installed, add its directory to PYTHONPATH:
+#   export PYTHONPATH=/path/to/minipae:$PYTHONPATH
+minipae
+
+# Dev / test only
+pytest>=8.0
