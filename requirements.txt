@@ -4,5 +4,10 @@
 #   export PYTHONPATH=/path/to/minipae:$PYTHONPATH
 minipae
 
+# Phase 7 (Reticulum/LXMF fallback) — optional at runtime, required for the
+# off-grid transport. Needs a running `rnsd` daemon with a transport.
+rns
+lxmf
+
 # Dev / test only
 pytest>=8.0

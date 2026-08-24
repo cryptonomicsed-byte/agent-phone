@@ -30,6 +30,12 @@ from .signaling import (
 from .presence import build_relay_list, build_heartbeat, HeartbeatLoop
 from .voicemail import build_voicemail_engram
 from .nip46 import PhoneSigner
+from .reticulum import (
+    ReticulumIdentity,
+    ReticulumFallback,
+    derive_reticulum_hash,
+    derive_reticulum_seed,
+)
 
 __all__ = [
     "Identity",
@@ -49,4 +55,8 @@ __all__ = [
     "HeartbeatLoop",
     "build_voicemail_engram",
     "PhoneSigner",
+    "ReticulumIdentity",
+    "ReticulumFallback",
+    "derive_reticulum_hash",
+    "derive_reticulum_seed",
 ]

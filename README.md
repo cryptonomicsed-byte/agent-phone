@@ -39,11 +39,12 @@ as an ordinary process and the wire format is identical either way.
 - `voicemail.py` — voicemail engram + Blossom blob reference
 - `nip46.py` — `PhoneSigner`: transport-key remote signing so the network-exposed
   phone process never holds the agent nsec
+- `reticulum.py` — Phase 7: deterministic Reticulum identity (HKDF from the
+  agent seed) + LXMF store-and-forward fallback (`ReticulumFallback`)
 - `cli.py` — `identity`, `binding`, `heartbeat`, `offer`, `decrypt`, `voicemail`
 
 **Still open:** Phase 1 (Nautilus — blocked on AWS Free Tier verification),
-Phase 7 (Reticulum/LXMF fallback), Phase 9 (payments — flag-gated), Phase 10
-(PSTN — deferred).
+Phase 9 (payments — flag-gated), Phase 10 (PSTN — deferred).
 
 ## Build order (10 phases)
 
@@ -53,7 +54,7 @@ Phase 7 (Reticulum/LXMF fallback), Phase 9 (payments — flag-gated), Phase 10
 4. ✅ npub identity binding (NIP-05 default, SuiNS optional) — *done*
 5. ✅ Nostr heartbeat presence (kind:10002) — *done*
 6. ✅ NIP-17 gift-wrapped signaling (offer/answer/ICE/hangup) — *done* (WebRTC media is out-of-band)
-7. Reticulum/LXMF fallback transport — open
+7. ✅ Reticulum/LXMF fallback transport — *done* (needs `rnsd` + LoRa/RNode for live use)
 8. ✅ Voicemail store-and-forward (NIP-44 + Blossom) — *done*
 9. Payments / spam resistance — ⚠️ flag-gated, not live
 10. Optional PSTN bridge (deferred, not started)

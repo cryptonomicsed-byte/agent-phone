@@ -25,6 +25,7 @@ from .identity import Identity, build_binding_engram, build_metadata_event
 from .presence import build_heartbeat
 from .signaling import build_offer, parse_signal, unwrap_gift_wrap
 from .voicemail import build_voicemail_engram
+from .reticulum import derive_reticulum_hash
 
 
 def _load_identity(args) -> Identity:
@@ -45,12 +46,13 @@ def cmd_identity(args) -> None:
 
 def cmd_binding(args) -> None:
     ident = _load_identity(args)
+    reticulum = args.reticulum or derive_reticulum_hash(ident.seckey)
     ev = build_binding_engram(
         ident,
         nip05=args.nip05,
         suins=args.suins,
         sui_address=args.sui,
-        reticulum_hash=args.reticulum,
+        reticulum_hash=reticulum,
     )
     print(json.dumps(ev, indent=2))
 
