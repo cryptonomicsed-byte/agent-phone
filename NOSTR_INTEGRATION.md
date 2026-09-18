@@ -110,9 +110,9 @@ by definition.
 ## Status
 
 - [x] Namespace registered (`mem/phone/*` already listed in `minipae/NAMESPACES.md`, status: planned)
-- [ ] Identity flow implemented (npub root)
-- [ ] Binding record engram
-- [ ] Heartbeat presence
-- [ ] NIP-46 wired for the phone process
-- [ ] Voicemail via Blossom
+- [x] Identity flow implemented (npub root)
+- [x] Binding record engram
+- [x] Heartbeat presence
+- [x] NIP-46 wired for the phone process
+- [x] Voicemail via Blossom
 - [ ] Decide: is the Nautilus TEE guarantee required for v1?
