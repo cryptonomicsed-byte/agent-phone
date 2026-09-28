@@ -15,7 +15,7 @@ without changing the telecom stack.
 
 __version__ = "0.1.0"
 
-from .identity import Identity, build_metadata_event, build_binding_engram
+from .identity import Identity, build_metadata_event, build_binding_engram  # Identity.birth() also available
 from .signaling import (
     SignalType,
     CallState,
@@ -35,6 +35,17 @@ from .reticulum import (
     ReticulumFallback,
     derive_reticulum_hash,
     derive_reticulum_seed,
+)
+from .ip_root import (
+    build_ip_root_event,
+    build_twin_binding_event,
+    build_creation_receipt_event,
+    store_ip_root_engram,
+    get_ip_root_id,
+    seal_splat_ownership,
+    KIND_IP_ROOT,
+    KIND_CREATION_RECEIPT,
+    KIND_TWIN_BINDING,
 )
 
 __all__ = [
@@ -59,4 +70,13 @@ __all__ = [
     "ReticulumFallback",
     "derive_reticulum_hash",
     "derive_reticulum_seed",
+    "build_ip_root_event",
+    "build_twin_binding_event",
+    "build_creation_receipt_event",
+    "store_ip_root_engram",
+    "get_ip_root_id",
+    "seal_splat_ownership",
+    "KIND_IP_ROOT",
+    "KIND_CREATION_RECEIPT",
+    "KIND_TWIN_BINDING",
 ]

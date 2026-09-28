@@ -8,12 +8,21 @@ record is optional:
 
 An agent with none of the optional attributes is still discoverable, callable
 and rememberable — that is the test for whether Sui is genuinely optional.
+
+Birth sequence (Identity.birth()):
+    1. generate() — fresh secp256k1 keypair
+    2. build_ip_root_event() — kind:31900 establishes provenance on Nostr
+    3. (caller) publish ip_root + store engram via store_ip_root_engram()
+
+The IP Root event is returned from birth() so the caller decides whether and
+where to publish it — offline agents skip publication silently.
 """
 from __future__ import annotations
 
 import json
 import secrets
 from dataclasses import dataclass, field
+from typing import Optional
 
 import minipae
 
@@ -56,6 +65,37 @@ class Identity:
     @classmethod
     def from_nsec(cls, nsec: str) -> "Identity":
         return cls(minipae.nsec_decode(nsec))
+
+    @classmethod
+    def birth(
+        cls,
+        display_name: Optional[str] = None,
+        owner_npub: Optional[str] = None,
+        framework: str = "omo-koda2",
+    ) -> tuple["Identity", dict]:
+        """
+        Birth a new sovereign agent: generate keypair + build IP Root event.
+
+        Returns (identity, ip_root_event).  The caller publishes ip_root_event
+        to a Nostr relay and stores the engram via store_ip_root_engram() when
+        connectivity is available — offline agents can skip both steps.
+
+        Example::
+
+            identity, ip_root = Identity.birth("my-agent")
+            # online:
+            await store_ip_root_engram(identity, ip_root, relay_url)
+        """
+        from .ip_root import build_ip_root_event
+        identity = cls.generate()
+        name = display_name or identity.pubkey.hex()[:12]
+        ip_root_event = build_ip_root_event(
+            identity,
+            display_name = name,
+            framework    = framework,
+            owner_npub   = owner_npub,
+        )
+        return identity, ip_root_event
 
 
 def build_metadata_event(

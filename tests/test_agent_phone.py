@@ -1,12 +1,14 @@
 """Unit tests for the agent-phone sovereign telecom stack.
 
 These exercise the pure logic (identity, binding, gift-wrapped signaling,
-voicemail, heartbeat) with two ephemeral identities — no relay needed.
+voicemail, heartbeat, IP root) with two ephemeral identities — no relay needed.
 """
+import hashlib
 import json
 
 import pytest
 
+import minipae
 from agent_phone import (
     Identity,
     CallState,
@@ -18,6 +20,13 @@ from agent_phone import (
     build_offer,
     build_voicemail_engram,
     parse_signal,
+    build_ip_root_event,
+    build_twin_binding_event,
+    build_creation_receipt_event,
+    seal_splat_ownership,
+    KIND_IP_ROOT,
+    KIND_CREATION_RECEIPT,
+    KIND_TWIN_BINDING,
 )
 from agent_phone.signaling import CallSession
 
@@ -129,3 +138,254 @@ def test_heartbeat():
     assert ["r", "wss://relay.damus.io"] in ev["tags"]
     content = json.loads(ev["content"])
     assert content["presence"] == "online"
+
+
+# ── IP Root (kind:31900) ──────────────────────────────────────────────────────
+
+def test_ip_root_event_structure():
+    a = Identity.generate()
+    ev = build_ip_root_event(a, display_name="test-agent", created_at=1_700_000_000)
+    assert ev["kind"] == KIND_IP_ROOT
+    assert ev["pubkey"] == a.pubkey_hex
+    # d-tag must be the agent's own pubkey hex
+    tags = {t[0]: t[1] for t in ev["tags"] if len(t) >= 2}
+    assert tags["d"] == a.pubkey_hex
+    assert tags["license"] == "cc-by-4.0"
+    content = json.loads(ev["content"])
+    assert content["display_name"] == "test-agent"
+    assert content["framework"] == "omo-koda2"
+
+
+def test_ip_root_event_id_deterministic():
+    a = Identity.generate()
+    ev1 = build_ip_root_event(a, "agent", created_at=1_700_000_000)
+    ev2 = build_ip_root_event(a, "agent", created_at=1_700_000_000)
+    # Same inputs → same event id (sig differs due to random aux, id is deterministic)
+    assert ev1["id"] == ev2["id"]
+
+
+def test_ip_root_event_id_matches_nip01():
+    """NIP-01: event id = sha256([0, pubkey, created_at, kind, tags, content])."""
+    a = Identity.generate()
+    ev = build_ip_root_event(a, "agent", created_at=1_700_000_000)
+    serial = json.dumps(
+        [0, ev["pubkey"], ev["created_at"], ev["kind"], ev["tags"], ev["content"]],
+        separators=(",", ":"),
+        ensure_ascii=False,
+    )
+    expected = hashlib.sha256(serial.encode()).hexdigest()
+    assert ev["id"] == expected
+
+
+def test_ip_root_sig_verifies():
+    a = Identity.generate()
+    ev = build_ip_root_event(a, "agent")
+    assert minipae.schnorr_verify(
+        bytes.fromhex(ev["id"]),
+        a.pubkey,
+        bytes.fromhex(ev["sig"]),
+    )
+
+
+def test_ip_root_optional_fields():
+    a = Identity.generate()
+    ev = build_ip_root_event(
+        a, "sovereign",
+        owner_npub="npub1abc",
+        soul_pubkey="deadbeef" * 8,
+        dao_id="dao-xyz",
+        notes="test note",
+    )
+    tag_keys = [t[0] for t in ev["tags"]]
+    assert "owner" in tag_keys
+    assert "soul" in tag_keys
+    assert "dao" in tag_keys
+    content = json.loads(ev["content"])
+    assert content["notes"] == "test note"
+
+
+# ── Twin Binding (kind:1903) ──────────────────────────────────────────────────
+
+def test_twin_binding_structure():
+    a = Identity.generate()
+    ev = build_twin_binding_event(
+        a,
+        twin_id="twin-abc123",
+        scene_receipt_id="receipt-xyz",
+        f1_score=0.9812,
+        created_at=1_700_000_001,
+    )
+    assert ev["kind"] == KIND_TWIN_BINDING
+    assert ev["pubkey"] == a.pubkey_hex
+    tags = {t[0]: t[1] for t in ev["tags"] if len(t) >= 2}
+    assert tags["ip_root"] == a.pubkey_hex
+    assert tags["sim_id"] == "twin-abc123"
+    assert tags["twin_kind"] == "gaussian-splat-1to1"
+    assert tags["fidelity"] == "0.9812"
+    # osovm_op tag: ["osovm_op", "RECEIPT", receipt_id]
+    osovm = next(t for t in ev["tags"] if t[0] == "osovm_op")
+    assert osovm[1] == "RECEIPT"
+    assert osovm[2] == "receipt-xyz"
+
+
+def test_twin_binding_sig_verifies():
+    a = Identity.generate()
+    ev = build_twin_binding_event(a, "twin-1", "rcpt-1")
+    assert minipae.schnorr_verify(
+        bytes.fromhex(ev["id"]), a.pubkey, bytes.fromhex(ev["sig"])
+    )
+
+
+def test_twin_binding_no_fidelity():
+    a = Identity.generate()
+    ev = build_twin_binding_event(a, "twin-1", "rcpt-1")
+    assert not any(t[0] == "fidelity" for t in ev["tags"])
+
+
+# ── Creation Receipt (kind:1901) ──────────────────────────────────────────────
+
+def test_creation_receipt_structure():
+    a = Identity.generate()
+    splat = b"fake-splat-bytes"
+    sha = hashlib.sha256(splat).hexdigest()
+    ev = build_creation_receipt_event(
+        a,
+        content_sha256   = sha,
+        scene_receipt_id = "scene-001",
+        twin_binding_id  = "binding-event-id",
+        title            = "My Splat",
+        created_at       = 1_700_000_002,
+    )
+    assert ev["kind"] == KIND_CREATION_RECEIPT
+    assert ev["pubkey"] == a.pubkey_hex
+    tags = {t[0]: t[1] for t in ev["tags"] if len(t) >= 2}
+    assert tags["ip_root"] == a.pubkey_hex
+    assert tags["x"] == sha
+    assert tags["m"] == "model/splat+ply"
+    assert tags["L"] == "license"
+    assert tags["twin"] == "binding-event-id"
+    content = json.loads(ev["content"])
+    assert content["title"] == "My Splat"
+
+
+def test_creation_receipt_sig_verifies():
+    a = Identity.generate()
+    ev = build_creation_receipt_event(
+        a, "abc" * 21 + "d", "scene-1", "twin-1", "Title"
+    )
+    assert minipae.schnorr_verify(
+        bytes.fromhex(ev["id"]), a.pubkey, bytes.fromhex(ev["sig"])
+    )
+
+
+def test_creation_receipt_no_twin():
+    a = Identity.generate()
+    ev = build_creation_receipt_event(a, "sha256abc", "scene-1", None, "Title")
+    assert not any(t[0] == "twin" for t in ev["tags"])
+
+
+# ── seal_splat_ownership ──────────────────────────────────────────────────────
+
+def test_seal_splat_ownership_returns_three_events():
+    a = Identity.generate()
+    splat = b"\x00\x01\x02gaussian"
+    ip_root, twin_binding, creation_receipt = seal_splat_ownership(
+        a, "twin-42", "scene-42", splat, f1_score=0.95, title="Scene 42"
+    )
+    assert ip_root["kind"] == KIND_IP_ROOT
+    assert twin_binding["kind"] == KIND_TWIN_BINDING
+    assert creation_receipt["kind"] == KIND_CREATION_RECEIPT
+
+
+def test_seal_splat_timestamps_ordered():
+    a = Identity.generate()
+    ip_root, twin, receipt = seal_splat_ownership(
+        a, "twin-1", "scene-1", b"data", None, "Test"
+    )
+    assert twin["created_at"] == ip_root["created_at"] + 1
+    assert receipt["created_at"] == twin["created_at"] + 1
+
+
+def test_seal_splat_twin_links_receipt():
+    """Creation receipt must reference twin binding event id."""
+    a = Identity.generate()
+    _, twin, receipt = seal_splat_ownership(a, "t", "s", b"x", None, "T")
+    twin_tag = next(t for t in receipt["tags"] if t[0] == "twin")
+    assert twin_tag[1] == twin["id"]
+
+
+def test_seal_splat_content_hash():
+    """x tag in creation receipt must be sha256 of splat bytes."""
+    a = Identity.generate()
+    splat = b"sovereign-gaussian-splat"
+    _, _, receipt = seal_splat_ownership(a, "t", "s", splat, None, "T")
+    x_tag = next(t for t in receipt["tags"] if t[0] == "x")
+    assert x_tag[1] == hashlib.sha256(splat).hexdigest()
+
+
+def test_seal_splat_all_sigs_verify():
+    a = Identity.generate()
+    events = seal_splat_ownership(a, "t", "s", b"data", 0.88, "T")
+    for ev in events:
+        assert minipae.schnorr_verify(
+            bytes.fromhex(ev["id"]), a.pubkey, bytes.fromhex(ev["sig"])
+        )
+
+
+# ── engram round-trip (offline, no relay) ────────────────────────────────────
+
+def test_ip_root_engram_dtag_derivation():
+    """d-tag for mem/ip/root must match minipae.d_tag(slug, kc)."""
+    a = Identity.generate()
+    from agent_phone.ip_root import IP_ROOT_SLUG
+    import minipae as mp
+    kc = mp.conversation_key(a.seckey, a.pubkey)
+    expected = mp.d_tag(IP_ROOT_SLUG, kc)
+    ev = mp.build_event(IP_ROOT_SLUG, {"test": 1}, a.seckey, a.pubkey)
+    actual = next(t[1] for t in ev["tags"] if t[0] == "d")
+    assert actual == expected
+
+
+def test_identity_birth_returns_ip_root():
+    """Identity.birth() must return (identity, ip_root_event) coherently."""
+    identity, ip_root = Identity.birth("my-agent")
+    assert isinstance(identity, Identity)
+    assert ip_root["kind"] == KIND_IP_ROOT
+    assert ip_root["pubkey"] == identity.pubkey_hex
+    # d-tag is the agent's own pubkey
+    tags = {t[0]: t[1] for t in ip_root["tags"] if len(t) >= 2}
+    assert tags["d"] == identity.pubkey_hex
+    content = json.loads(ip_root["content"])
+    assert content["display_name"] == "my-agent"
+
+
+def test_identity_birth_sig_verifies():
+    identity, ip_root = Identity.birth()
+    assert minipae.schnorr_verify(
+        bytes.fromhex(ip_root["id"]), identity.pubkey, bytes.fromhex(ip_root["sig"])
+    )
+
+
+def test_identity_birth_with_owner_npub():
+    identity, ip_root = Identity.birth("agent", owner_npub="npub1test")
+    tag_keys = [t[0] for t in ip_root["tags"]]
+    assert "owner" in tag_keys
+
+
+def test_ip_root_engram_body_roundtrip():
+    """build_event / decode_body must round-trip ip root body."""
+    from agent_phone.ip_root import IP_ROOT_SLUG
+    import minipae as mp
+    a = Identity.generate()
+    ip_root_ev = build_ip_root_event(a, "agent")
+    body = {
+        "ip_root_event_id": ip_root_ev["id"],
+        "pubkey":           ip_root_ev["pubkey"],
+        "kind":             ip_root_ev["kind"],
+        "created_at":       ip_root_ev["created_at"],
+    }
+    kc = mp.conversation_key(a.seckey, a.pubkey)
+    engram_ev = mp.build_event(IP_ROOT_SLUG, body, a.seckey, a.pubkey)
+    decoded = mp.decode_body(engram_ev, kc)
+    assert decoded["ip_root_event_id"] == ip_root_ev["id"]
+    assert decoded["pubkey"] == a.pubkey_hex
