@@ -30,12 +30,38 @@ from .signaling import (
 from .presence import build_relay_list, build_heartbeat, HeartbeatLoop
 from .voicemail import build_voicemail_engram
 from .nip46 import PhoneSigner
-from .reticulum import (
-    ReticulumIdentity,
-    ReticulumFallback,
-    derive_reticulum_hash,
-    derive_reticulum_seed,
-)
+
+# Reticulum/LXMF is the OFF-GRID fallback transport and is optional at runtime
+# (requirements.txt: "Phase 7 (Reticulum/LXMF fallback) — optional at runtime,
+# required for the off-grid transport"). Importing it unconditionally meant
+# `import agent_phone` failed outright wherever RNS was absent — taking identity,
+# signaling, presence, voicemail, NIP-46 and ip_root down with it. Guard it; the
+# off-grid path raises only when it is actually used.
+try:
+    from .reticulum import (
+        ReticulumIdentity,
+        ReticulumFallback,
+        derive_reticulum_hash,
+        derive_reticulum_seed,
+    )
+    HAS_RETICULUM = True
+except ImportError:  # RNS not installed — off-grid transport unavailable
+    HAS_RETICULUM = False
+
+    class _UnavailableReticulum:  # type: ignore[no-redef]
+        def __init__(self, *a, **k):
+            raise RuntimeError(
+                "Reticulum transport unavailable: `pip install rns lxmf` and run "
+                "an rnsd daemon to use the off-grid fallback")
+
+    ReticulumIdentity = _UnavailableReticulum  # type: ignore[assignment]
+    ReticulumFallback = _UnavailableReticulum  # type: ignore[assignment]
+
+    def derive_reticulum_hash(*a, **k):  # type: ignore
+        raise RuntimeError("Reticulum unavailable: `pip install rns`")
+
+    def derive_reticulum_seed(*a, **k):  # type: ignore
+        raise RuntimeError("Reticulum unavailable: `pip install rns`")
 from .ip_root import (
     build_ip_root_event,
     build_twin_binding_event,
