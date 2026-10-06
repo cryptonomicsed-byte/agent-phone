@@ -78,22 +78,50 @@ def _conversation_key(sender: Identity, recipient_pubkey: bytes) -> bytes:
 
 
 def build_gift_wrap(sender: Identity, recipient_pubkey: bytes, plaintext: str) -> dict:
-    """Encrypt `plaintext` to `recipient_pubkey` and wrap in a signed kind:1059."""
-    conv_key = _conversation_key(sender, recipient_pubkey)
-    sealed = minipae.nip44_encrypt(plaintext, conv_key)
+    """Build a proper NIP-17 gift wrap: rumor (kind:14) → seal (kind:13) → wrap (kind:1059).
+
+    The outer gift wrap is signed by a throwaway key so the relay cannot link
+    sender to receiver. The seal is signed by the real sender so the recipient
+    can verify authenticity after decryption.
+    """
+    import time
+    recipient_hex = recipient_pubkey.hex()
+
+    # Layer 1: RUMOR — kind:14, plaintext DM content, no id/sig fields
+    rumor = {
+        "kind": 14,
+        "content": plaintext,
+        "tags": [["p", recipient_hex]],
+        "created_at": int(time.time()),
+        "pubkey": sender.pubkey_hex,
+    }
+
+    # Layer 2: SEAL — kind:13, nip44(rumor) to recipient, signed by sender
+    seal_conv_key = minipae.conversation_key(sender.seckey, recipient_pubkey)
+    seal = minipae.sign_event(
+        13,
+        minipae.nip44_encrypt(json.dumps(rumor, separators=(",", ":")), seal_conv_key),
+        [],
+        sender.seckey,
+    )
+
+    # Layer 3: GIFT WRAP — kind:1059, nip44(seal) to recipient, throwaway key
+    throwaway = Identity.generate()
+    wrap_conv_key = minipae.conversation_key(throwaway.seckey, recipient_pubkey)
     return minipae.sign_event(
         KIND_GIFT_WRAP,
-        sealed,
-        [["p", recipient_pubkey.hex()]],
-        sender.seckey,
+        minipae.nip44_encrypt(json.dumps(seal, separators=(",", ":")), wrap_conv_key),
+        [["p", recipient_hex]],
+        throwaway.seckey,
     )
 
 
 def unwrap_gift_wrap(gift_wrap_event: dict, recipient: Identity) -> str:
-    """Verify a kind:1059 event addressed to us and decrypt its payload.
+    """Unwrap a NIP-17 gift wrap and return the plaintext.
 
-    Raises ValueError on a wrong kind, a missing/incorrect recipient tag, or a
-    bad signature — callers must treat an exception as "do not trust this".
+    Handles both proper NIP-17 (3-layer: wrap→seal→rumor) and the legacy
+    1-layer format (direct payload in the gift wrap). Raises ValueError on
+    a wrong kind, bad recipient, or a signature that does not verify.
     """
     if gift_wrap_event.get("kind") != KIND_GIFT_WRAP:
         raise ValueError("not a gift-wrap event")
@@ -102,14 +130,39 @@ def unwrap_gift_wrap(gift_wrap_event: dict, recipient: Identity) -> str:
     if ["p", recipient.pubkey_hex] not in tags:
         raise ValueError("gift wrap not addressed to this recipient")
 
-    sender_pubkey = bytes.fromhex(gift_wrap_event["pubkey"])
+    wrap_pubkey = bytes.fromhex(gift_wrap_event["pubkey"])
     event_id_bytes = bytes.fromhex(gift_wrap_event["id"])
     sig = bytes.fromhex(gift_wrap_event["sig"])
-    if not minipae.schnorr_verify(event_id_bytes, sender_pubkey, sig):
+    if not minipae.schnorr_verify(event_id_bytes, wrap_pubkey, sig):
         raise ValueError("gift-wrap signature does not verify")
 
-    conv_key = _conversation_key(recipient, sender_pubkey)
-    return minipae.nip44_decrypt(gift_wrap_event["content"], conv_key)
+    # Decrypt outer layer (throwaway or sender key → recipient)
+    outer_conv_key = minipae.conversation_key(recipient.seckey, wrap_pubkey)
+    inner_str = minipae.nip44_decrypt(gift_wrap_event["content"], outer_conv_key)
+
+    # Detect NIP-17 3-layer: inner is a signed seal (kind:13)
+    try:
+        inner = json.loads(inner_str)
+    except (json.JSONDecodeError, ValueError):
+        return inner_str  # legacy: inner_str is the raw plaintext
+
+    if isinstance(inner, dict) and inner.get("kind") == 13:
+        # Verify seal signature (signed by the real sender)
+        seal_pubkey = bytes.fromhex(inner["pubkey"])
+        seal_id = bytes.fromhex(inner["id"])
+        seal_sig = bytes.fromhex(inner["sig"])
+        if not minipae.schnorr_verify(seal_id, seal_pubkey, seal_sig):
+            raise ValueError("seal signature does not verify")
+        seal_conv_key = minipae.conversation_key(recipient.seckey, seal_pubkey)
+        rumor_str = minipae.nip44_decrypt(inner["content"], seal_conv_key)
+        rumor = json.loads(rumor_str)
+        # kind:14 rumor — return the content field; fallback to full rumor string
+        if isinstance(rumor, dict) and rumor.get("kind") == 14:
+            return rumor["content"]
+        return rumor_str
+
+    # Legacy 1-layer: inner parsed as JSON (signal payload) but is not a seal
+    return inner_str
 
 
 # -- signal constructors ----------------------------------------------------
