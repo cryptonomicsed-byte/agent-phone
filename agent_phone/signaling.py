@@ -165,6 +165,25 @@ def unwrap_gift_wrap(gift_wrap_event: dict, recipient: Identity) -> str:
     return inner_str
 
 
+
+def build_signal_wrap(sender: Identity, recipient_pubkey: bytes, plaintext: str) -> dict:
+    """Single-layer kind:1059 wrap for browser callers.
+
+    The shipped caller PWA decrypts the gift-wrap content and JSON-parses it
+    DIRECTLY as the signal (it has no NIP-17 seal/rumor unwrap). A proper
+    NIP-17 3-layer wrap decrypts to a *seal* object, so the caller finds no
+    `call_id`, silently drops it, and rings forever. Outbound callee->caller
+    signals therefore use the 1-layer form the caller can actually read.
+    (The endpoint's unwrap_gift_wrap already accepts both shapes inbound.)
+    """
+    conv_key = minipae.conversation_key(sender.seckey, recipient_pubkey)
+    return minipae.sign_event(
+        KIND_GIFT_WRAP,
+        minipae.nip44_encrypt(plaintext, conv_key),
+        [["p", recipient_pubkey.hex()]],
+        sender.seckey,
+    )
+
 # -- signal constructors ----------------------------------------------------
 
 def build_offer(caller: Identity, callee_pubkey: bytes, sdp: str, call_id: str | None = None) -> dict:
@@ -174,17 +193,17 @@ def build_offer(caller: Identity, callee_pubkey: bytes, sdp: str, call_id: str |
 
 def build_answer(callee: Identity, caller_pubkey: bytes, sdp: str, call_id: str) -> dict:
     signal = Signal(SignalType.ANSWER, call_id, sdp=sdp)
-    return build_gift_wrap(callee, caller_pubkey, signal.to_json())
+    return build_signal_wrap(callee, caller_pubkey, signal.to_json())
 
 
 def build_ice(agent: Identity, peer_pubkey: bytes, call_id: str, candidate: dict) -> dict:
     signal = Signal(SignalType.ICE, call_id, candidate=candidate)
-    return build_gift_wrap(agent, peer_pubkey, signal.to_json())
+    return build_signal_wrap(agent, peer_pubkey, signal.to_json())
 
 
 def build_hangup(agent: Identity, peer_pubkey: bytes, call_id: str, reason: str = "bye") -> dict:
     signal = Signal(SignalType.HANGUP, call_id, reason=reason)
-    return build_gift_wrap(agent, peer_pubkey, signal.to_json())
+    return build_signal_wrap(agent, peer_pubkey, signal.to_json())
 
 
 def parse_signal(gift_wrap_event: dict, recipient: Identity) -> Signal:
