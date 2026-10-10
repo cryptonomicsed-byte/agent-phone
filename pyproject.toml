@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agent-phone"
+version = "0.1.0"
+description = "Sovereign Nostr-native communications stack (identity, NIP-17 signalling, voicemail)"
+requires-python = ">=3.11"
+# No runtime dependencies declared on purpose: this repo builds the wire
+# formats and holds no keys. Its consumers (agent-voice) pin the transport
+# stack in their own requirements, so a floating dep here would just be a
+# second, weaker source of truth.
+dependencies = []
+
+[tool.setuptools.packages.find]
+include = ["agent_phone*"]
