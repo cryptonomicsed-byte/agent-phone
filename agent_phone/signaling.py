@@ -207,8 +207,85 @@ def build_hangup(agent: Identity, peer_pubkey: bytes, call_id: str, reason: str 
 
 
 def parse_signal(gift_wrap_event: dict, recipient: Identity) -> Signal:
-    """Decrypt + parse an incoming signaling gift wrap into a Signal."""
+    """Decrypt + parse an incoming signaling gift wrap into a Signal.
+
+    This does NOT tell you who sent it. Use parse_signal_with_sender for
+    anything that routes a reply: the outer pubkey of a NIP-17 wrap is a
+    throwaway key.
+    """
     return Signal.from_json(unwrap_gift_wrap(gift_wrap_event, recipient))
+
+
+@dataclass(frozen=True)
+class VerifiedSignal:
+    signal: Signal
+    sender: bytes          # authenticated x-only pubkey of the real sender
+    layers: int            # 3 = NIP-17 gift wrap, 1 = legacy single-layer wrap
+    event_id: str          # outer event id, for replay de-duplication
+
+
+def _verify_signed_event(ev: dict, what: str) -> bytes:
+    """Recompute the id and check the signature of one event; return its pubkey."""
+    try:
+        pubkey = bytes.fromhex(ev["pubkey"])
+        claimed_id = ev["id"]
+        sig = bytes.fromhex(ev["sig"])
+        actual_id = minipae.event_id(ev)
+    except (KeyError, TypeError, ValueError) as e:
+        raise ValueError(f"{what} is malformed: {e}") from None
+    if len(pubkey) != 32 or claimed_id != actual_id:
+        raise ValueError(f"{what} id does not match its content")
+    if not minipae.schnorr_verify(bytes.fromhex(actual_id), pubkey, sig):
+        raise ValueError(f"{what} signature does not verify")
+    return pubkey
+
+
+def parse_signal_with_sender(gift_wrap_event: dict, recipient: Identity) -> VerifiedSignal:
+    """Decrypt a call-signal gift wrap and return it with its verified sender.
+
+    * three-layer NIP-17 (wrap -> seal -> rumor): the sender is the seal's
+      signer, and the rumor must name the same author, otherwise someone could
+      re-seal another party's rumor and impersonate them;
+    * legacy one-layer wrap: the sender is the outer signer.
+
+    Every signed layer has its id recomputed, so a valid signature cannot be
+    carried over to different content. Raises ValueError for anything that
+    cannot be authenticated.
+    """
+    if not isinstance(gift_wrap_event, dict) or gift_wrap_event.get("kind") != KIND_GIFT_WRAP:
+        raise ValueError("not a gift-wrap event")
+    if ["p", recipient.pubkey_hex] not in gift_wrap_event.get("tags", []):
+        raise ValueError("gift wrap not addressed to this recipient")
+
+    wrap_pubkey = _verify_signed_event(gift_wrap_event, "gift wrap")
+    try:
+        inner_str = minipae.nip44_decrypt(
+            gift_wrap_event["content"],
+            minipae.conversation_key(recipient.seckey, wrap_pubkey))
+        inner = json.loads(inner_str)
+    except Exception as e:
+        raise ValueError(f"gift wrap does not decrypt to JSON: {e}") from None
+
+    if isinstance(inner, dict) and inner.get("kind") == 13:
+        seal_pubkey = _verify_signed_event(inner, "seal")
+        try:
+            rumor = json.loads(minipae.nip44_decrypt(
+                inner["content"], minipae.conversation_key(recipient.seckey, seal_pubkey)))
+        except Exception as e:
+            raise ValueError(f"seal does not decrypt to JSON: {e}") from None
+        if not isinstance(rumor, dict) or rumor.get("kind") != 14:
+            raise ValueError("seal does not contain a kind:14 rumor")
+        if rumor.get("pubkey") != inner["pubkey"]:
+            raise ValueError("rumor author does not match the seal signer")
+        payload, sender, layers = rumor.get("content", ""), seal_pubkey, 3
+    else:
+        payload, sender, layers = inner_str, wrap_pubkey, 1
+
+    try:
+        signal = Signal.from_json(payload)
+    except Exception as e:
+        raise ValueError(f"payload is not a call signal: {e}") from None
+    return VerifiedSignal(signal, sender, layers, gift_wrap_event["id"])
 
 
 class CallSession:
