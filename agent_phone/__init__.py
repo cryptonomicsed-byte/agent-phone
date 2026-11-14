@@ -26,6 +26,8 @@ from .signaling import (
     build_ice,
     build_hangup,
     parse_signal,
+    parse_signal_with_sender,
+    VerifiedSignal,
 )
 from .presence import build_relay_list, build_heartbeat, HeartbeatLoop
 from .voicemail import build_voicemail_engram
@@ -87,6 +89,8 @@ __all__ = [
     "build_ice",
     "build_hangup",
     "parse_signal",
+    "parse_signal_with_sender",
+    "VerifiedSignal",
     "build_relay_list",
     "build_heartbeat",
     "HeartbeatLoop",
